@@ -72,6 +72,7 @@ library
     Brick.AttrMap
     Brick.BChan
     Brick.BorderMap
+    Brick.Escape
     Brick.Keybindings
     Brick.Keybindings.KeyConfig
     Brick.Keybindings.KeyEvents
@@ -90,7 +91,9 @@ library
     Brick.Widgets.Center
     Brick.Widgets.Core
     Brick.Widgets.Dialog
+    Brick.Widgets.Dialog.Stack
     Brick.Widgets.Edit
+    Brick.Widgets.FilterList
     Brick.Widgets.FileBrowser
     Brick.Widgets.List
     Brick.Widgets.Menu
@@ -599,9 +602,10 @@ test-suite brick-tests
   ghc-options:         -Wall -Wcompat -Wno-orphans -O2
   default-language:    Haskell2010
   main-is:             Main.hs
-  other-modules:       List Render
+  other-modules:       List Render DialogStack Escape FilterList
   build-depends:       base <=5,
                        brick,
+                       text,
                        containers,
                        microlens,
                        vector,
