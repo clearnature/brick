@@ -1,0 +1,243 @@
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+
+-- | Render Markdown to Brick widgets.
+--
+-- Parsing is delegated to "Commonmark"; this module owns the step the parser
+-- leaves to the caller: turning blocks and inlines into terminal rows.
+--
+-- The trick that keeps this short: 'IsBlock' and 'IsInline' are /construction/
+-- interfaces, not traversal interfaces.  The parser calls @paragraph@,
+-- @heading@, @list@… with the already-parsed children, so implementing those
+-- two classes over a small intermediate type gives the document structure
+-- without walking any AST.
+--
+-- Styling is a policy rather than a palette, so the module works in a plain
+-- terminal and can be tested without a theme:
+--
+-- > renderMarkdownRaw plainStyle 80 "# Title"
+-- > -- ["# Title"]
+module Brick.Widgets.Markdown
+  ( -- * Style
+    MdStyle(..)
+  , plainStyle
+
+    -- * Rendering
+  , renderMarkdownRaw
+  , renderMarkdown
+  , renderMarkdownPlain
+  ) where
+
+import Brick (Widget)
+import Brick.Widgets.Core (txt, vBox)
+import Commonmark
+import Data.List (intercalate)
+import Data.Text (Text)
+import qualified Data.Text as T
+
+-- ---------------------------------------------------------------- style
+
+-- | How each Markdown construct becomes text.  A style never sees the AST;
+-- it maps structure to a rendered string.
+data MdStyle = MdStyle
+  { msHeading  :: Int -> Text -> Text
+  , msStrong   :: Text -> Text
+  , msEm       :: Text -> Text
+  , msCode     :: Text -> Text
+  , msLink     :: Text -> Text -> Text
+  , msBullet   :: Int -> Int -> Text
+    -- ^ Nesting level and item number (0 = unordered).
+  , msQuoteBar :: Text
+  , msRule     :: Int -> Text
+  , msIndent   :: Int -> Text
+  }
+
+-- | Structure with ASCII markers and no colour, so the module is usable and
+-- testable without a terminal theme.
+plainStyle :: MdStyle
+plainStyle = MdStyle
+  { msHeading  = \lvl t -> T.replicate lvl "#" <> " " <> t
+  , msStrong   = \t -> "**" <> t <> "**"
+  , msEm       = \t -> "*" <> t <> "*"
+  , msCode     = \t -> "`" <> t <> "`"
+  , msLink     = \t u -> t <> " (" <> u <> ")"
+  , msBullet   = \lvl n ->
+      T.replicate (lvl * 2) " " <> if n == 0 then "-" else T.pack (show n) <> "."
+  , msQuoteBar = "│ "
+  , msRule     = \w -> T.replicate w "-"
+  , msIndent   = \lvl -> T.replicate (lvl * 2) " "
+  }
+
+-- ------------------------------------------------------- intermediate form
+
+-- | A parsed inline.
+data MdInline
+  = InlText Text
+  | InlStrong MdInline
+  | InlEm MdInline
+  | InlCode Text
+  | InlLink MdInline Text
+  | InlBreak
+  deriving (Show)
+
+newtype MdInlines = MdInlines { unInlines :: [MdInline] }
+
+instance Semigroup MdInlines where
+  MdInlines a <> MdInlines b = MdInlines (a <> b)
+
+instance Monoid MdInlines where
+  mempty = MdInlines []
+
+instance Show MdInlines where
+  show = show . unInlines
+
+instance Rangeable MdInlines where
+  ranged _ = id
+
+instance HasAttributes MdInlines where
+  addAttributes _ = id
+
+-- | A parsed block, already reduced to the shape a terminal row needs.
+data MdRow
+  = RowHeading Int MdInlines
+  | RowParagraph MdInlines
+  | RowCodeBlock Text
+  | RowQuote [MdRow]
+  | RowBullet Int Int MdInlines
+    -- ^ Nesting level, item number (0 = unordered), content.
+  | RowRule
+  deriving (Show)
+
+newtype MdDoc = MdDoc { unMdDoc :: [MdRow] }
+
+instance Semigroup MdDoc where
+  MdDoc a <> MdDoc b = MdDoc (a <> b)
+
+instance Monoid MdDoc where
+  mempty = MdDoc []
+
+instance Show MdDoc where
+  show = show . unMdDoc
+
+instance Rangeable MdDoc where
+  ranged _ = id
+
+instance HasAttributes MdDoc where
+  addAttributes _ = id
+
+-- ------------------------------------------------------------ instances
+
+instance IsInline MdInlines where
+  lineBreak = MdInlines [InlBreak]
+  softBreak = MdInlines [InlText " "]
+  str t = MdInlines [InlText t]
+  entity t = MdInlines [InlText t]
+  escapedChar c = MdInlines [InlText (T.singleton c)]
+  emph = \(MdInlines is) -> MdInlines [InlEm (foldInline is)]
+  strong = \(MdInlines is) -> MdInlines [InlStrong (foldInline is)]
+  link dest _title desc = case desc of
+    MdInlines is -> MdInlines [InlLink (foldInline is) dest]
+  image _ _ desc = desc
+  code t = MdInlines [InlCode t]
+  rawInline _ t = MdInlines [InlText t]
+
+-- | Collapse an inline run into the single node a wrapper (emph/strong) holds.
+foldInline :: [MdInline] -> MdInline
+foldInline [i] = i
+foldInline is  = InlText (concatInlines is)
+
+instance IsBlock MdInlines MdDoc where
+  paragraph ils = MdDoc [RowParagraph ils]
+  plain ils = MdDoc [RowParagraph ils]
+  thematicBreak = MdDoc [RowRule]
+  blockQuote (MdDoc rows) = MdDoc [RowQuote rows]
+  codeBlock _ t = MdDoc [RowCodeBlock t]
+  heading lvl ils = MdDoc [RowHeading lvl ils]
+  rawBlock _ t = MdDoc [RowCodeBlock t]
+  referenceLinkDefinition _ _ = mempty
+  list (BulletList _) _ items = MdDoc (zipWith (bullet 0) (repeat 0) items)
+  list (OrderedList start _ _) _ items =
+    MdDoc (zipWith (bullet 0) [start ..] items)
+
+-- | Turn a parsed list item into a bulleted row.  An item holding a single
+-- paragraph keeps its inlines (so styling survives); anything more complex
+-- is flattened, which is what a one-row terminal list can show anyway.
+bullet :: Int -> Int -> MdDoc -> MdRow
+bullet lvl n (MdDoc rows) = case rows of
+  [RowParagraph ils] -> RowBullet lvl n ils
+  other              -> RowBullet lvl n
+    (MdInlines [InlText (T.intercalate " " (map rowText other))])
+
+rowText :: MdRow -> Text
+rowText (RowParagraph ils) = concatInlines (unInlines ils)
+rowText _                  = ""
+
+-- ------------------------------------------------------------- rendering
+
+-- | Flatten an inline run to text, ignoring styling (used where only the
+-- content matters, e.g. inside a collapsed list item).
+concatInlines :: [MdInline] -> Text
+concatInlines = mconcat . map go
+  where
+    go (InlText t)     = t
+    go (InlStrong i)   = go i
+    go (InlEm i)       = go i
+    go (InlCode t)     = t
+    go (InlLink i _)   = go i
+    go InlBreak        = " "
+
+-- | Render one inline with the given style.
+renderInline :: MdStyle -> MdInline -> Text
+renderInline st = go
+  where
+    go (InlText t)   = t
+    go (InlStrong i) = msStrong st (go i)
+    go (InlEm i)     = msEm st (go i)
+    go (InlCode t)   = msCode st t
+    go (InlLink i u) = msLink st (go i) u
+    go InlBreak      = "\n"
+
+renderInlines :: MdStyle -> MdInlines -> Text
+renderInlines st (MdInlines is) = T.concat (map (renderInline st) is)
+
+-- | Parse and render to rows of plain text.
+--
+-- Rows are returned in document order; a blockquote's rows are prefixed with
+-- 'msQuoteBar'.  A parse error yields no rows rather than an exception.
+renderMarkdownRaw :: MdStyle -> Int -> Text -> [Text]
+renderMarkdownRaw st width input =
+  case commonmark "" input :: Either ParseError MdDoc of
+    Left _     -> []
+    Right doc  -> renderRows st width 0 (unMdDoc doc)
+
+renderRows :: MdStyle -> Int -> Int -> [MdRow] -> [Text]
+renderRows st width lvl rows =
+  -- 块与块之间空一行，但末尾不留空行（"a\n\nb" → ["a","","b"]）
+  intercalate [""] (map (renderRow st width lvl) rows)
+
+renderRow :: MdStyle -> Int -> Int -> MdRow -> [Text]
+renderRow st width lvl = \case
+  RowHeading n ils  -> [msHeading st n (renderInlines st ils)]
+  RowParagraph ils  -> [renderInlines st ils]
+  RowCodeBlock t    -> T.lines t
+  RowRule           -> [msRule st width]
+  RowBullet n k ils ->
+    let indent = msIndent st (lvl + n)
+        marker = msBullet st (lvl + n) k
+        body   = renderInlines st ils
+    in [indent <> marker <> " " <> body]
+  RowQuote rows     ->
+    let bar r = msQuoteBar st <> r
+    in map bar (renderRows st width (lvl + 1) rows)
+
+-- | Render to a widget.
+renderMarkdown :: MdStyle -> Int -> Text -> Widget n
+renderMarkdown st width input =
+  vBox (map txt (renderMarkdownRaw st width input))
+
+-- | Render to plain text (the "copy this message" path).
+renderMarkdownPlain :: Int -> Text -> Text
+renderMarkdownPlain width input =
+  T.intercalate "\n" (renderMarkdownRaw plainStyle width input)

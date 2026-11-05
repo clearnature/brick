@@ -97,6 +97,7 @@ library
     Brick.Widgets.FileBrowser
     Brick.Widgets.GlyphFit
     Brick.Widgets.List
+    Brick.Widgets.Markdown
     Brick.Widgets.Menu
     Brick.Widgets.MenuBar
     Brick.Widgets.ProgressBar
@@ -137,7 +138,10 @@ library
                        word-wrap >= 0.2,
                        unordered-containers,
                        hashable,
-                       time
+                       time,
+                       -- Markdown 渲染（Brick.Widgets.Markdown）的解析层
+                       commonmark >= 0.2,
+                       commonmark-extensions
 
 executable brick-custom-keybinding-demo
   if !flag(demos)
@@ -150,6 +154,8 @@ executable brick-custom-keybinding-demo
   build-depends:       base,
                        brick,
                        text,
+                       commonmark >= 0.2,
+                       commonmark-extensions,
                        vty,
                        containers,
                        microlens,
@@ -604,7 +610,7 @@ test-suite brick-tests
   ghc-options:         -Wall -Wcompat -Wno-orphans -O2
   default-language:    Haskell2010
   main-is:             Main.hs
-  other-modules:       List Render DialogStack Escape FilterList TextWidth GlyphFit
+  other-modules:       List Render DialogStack Escape FilterList TextWidth GlyphFit Markdown
   build-depends:       base <=5,
                        brick,
                        text,
