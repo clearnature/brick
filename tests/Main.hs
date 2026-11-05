@@ -17,6 +17,7 @@ import qualified Render
 import qualified DialogStack
 import qualified Escape
 import qualified FilterList
+import qualified TextWidth
 
 #if !(MIN_VERSION_base(4,18,0))
 import Control.Applicative (liftA2)
@@ -119,5 +120,5 @@ return []
 
 main :: IO ()
 main =
-  (and <$> sequenceA [DialogStack.main, Escape.main, FilterList.main])
+  (and <$> sequenceA [DialogStack.main, Escape.main, FilterList.main, TextWidth.main])
   >>= bool exitFailure exitSuccess
