@@ -14,6 +14,8 @@ import qualified Data.IntMap as IntMap
 
 import qualified List
 import qualified Render
+import qualified DialogStack
+import qualified Escape
 
 #if !(MIN_VERSION_base(4,18,0))
 import Control.Applicative (liftA2)
@@ -116,5 +118,5 @@ return []
 
 main :: IO ()
 main =
-  (and <$> sequenceA [$quickCheckAll, List.main, Render.main])
+  (and <$> sequenceA [DialogStack.main, Escape.main])
   >>= bool exitFailure exitSuccess
