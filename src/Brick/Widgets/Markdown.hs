@@ -32,7 +32,11 @@ module Brick.Widgets.Markdown
 
 import Brick (Widget)
 import Brick.Widgets.Core (txt, vBox)
+import Brick.Widgets.TextWidth (textCells)
 import Commonmark
+import Commonmark (SyntaxSpec, defaultSyntaxSpec)
+import Data.Functor.Identity (Identity, runIdentity)
+import Commonmark.Extensions (ColAlignment(..), HasPipeTable(..), pipeTableSpec)
 import Data.List (intercalate)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -108,6 +112,8 @@ data MdRow
   | RowBullet Int Int [MdRow]
     -- ^ Nesting level, item number (0 = unordered), and the item's blocks
     -- (a paragraph, possibly followed by a nested list).
+  | RowTable [ColAlignment] [[MdInlines]]
+    -- ^ Column alignments and the rows of cells (the first row is the header).
   | RowList [MdRow]
     -- ^ A whole list: its items are rows, but they are tight — no blank row
     -- belongs between them the way it does between blocks.
@@ -166,6 +172,11 @@ instance IsBlock MdInlines MdDoc where
   list (OrderedList start _ _) _ items =
     MdDoc [RowList (zipWith (bullet 0) [start ..] items)]
 
+-- | Tables arrive through has-pipe-table, the same construction style as
+-- 'IsBlock': no AST to walk.
+instance HasPipeTable MdInlines MdDoc where
+  pipeTable aligns headers rows = MdDoc [RowTable aligns (headers : rows)]
+
 -- | Turn a parsed list item into a bulleted row.  An item holding a single
 -- paragraph keeps its inlines (so styling survives); anything more complex
 -- is flattened, which is what a one-row terminal list can show anyway.
@@ -206,7 +217,13 @@ renderInlines st (MdInlines is) = T.concat (map (renderInline st) is)
 -- 'msQuoteBar'.  A parse error yields no rows rather than an exception.
 renderMarkdownRaw :: MdStyle -> Int -> Text -> [Text]
 renderMarkdownRaw st width input =
-  case commonmark "" input :: Either ParseError MdDoc of
+  -- commonmarkWith 返回 m (Either ParseError bl)；runIdentity 剥掉外层，
+  -- 与 commonmark 自身的实现（runIdentity . parseCommonmarkWith）一致。
+  case runIdentity
+         (commonmarkWith
+            ((defaultSyntaxSpec <> pipeTableSpec)
+               :: SyntaxSpec Identity MdInlines MdDoc)
+            "" input) of
     Left _     -> []
     Right doc  -> renderRows st width 0 (unMdDoc doc)
 
@@ -230,10 +247,39 @@ renderRow st width lvl = \case
              : renderRows st width (lvl + n + 1) rest
          rest -> (indent <> marker)
                    : renderRows st width (lvl + n + 1) rest
+  RowTable aligns rows -> renderTable st aligns rows
   RowList rows      -> concatMap (renderRow st width lvl) rows
   RowQuote rows     ->
     let bar r = msQuoteBar st <> r
     in map bar (renderRows st width (lvl + 1) rows)
+
+-- | Render a table: measure every column in cells (not characters, so CJK
+-- lines up), pad each cell to its column width honouring the alignment, and
+-- put a rule under the header.
+renderTable :: MdStyle -> [ColAlignment] -> [[MdInlines]] -> [Text]
+renderTable st aligns rows
+  | null cells = []
+  | otherwise  = line header : rule : map line body
+  where
+    cells = map (map (renderInlines st)) rows
+    ncols = maximum (0 : map length cells)
+    widths = [ maximum (0 : map textCells [ r !! i | r <- cells, length r > i ])
+             | i <- [0 .. ncols - 1] ]
+    alignAt i = case drop i aligns of
+      (a : _) -> a
+      []      -> DefaultAlignedCol
+    cellAt i r = if length r > i then r !! i else ""
+    pad w a t =
+      let gap = max 0 (w - textCells t)
+      in case a of
+           RightAlignedCol  -> T.replicate gap " " <> t
+           CenterAlignedCol -> let l = gap `div` 2
+                               in T.replicate l " " <> t <> T.replicate (gap - l) " "
+           _                -> t <> T.replicate gap " "
+    line r = "| " <> T.intercalate " | "
+      [ pad (widths !! i) (alignAt i) (cellAt i r) | i <- [0 .. ncols - 1] ] <> " |"
+    (header : body) = cells
+    rule = "|" <> T.intercalate "|" [ T.replicate (w + 2) "-" | w <- widths ] <> "|"
 
 -- | Render to a widget.
 renderMarkdown :: MdStyle -> Int -> Text -> Widget n

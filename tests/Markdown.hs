@@ -110,6 +110,31 @@ prop_mixedInline =
     let got = renderMarkdownRaw plainStyle 80 "**a** *b* `c`"
     in counterexample (show got) (got == ["**a** *b* `c`"])
 
+-- ---------------------------------------------------------------- T3 表格
+
+-- | A pipe table renders header, rule, then body rows.
+prop_table2x2 :: Property
+prop_table2x2 =
+    let got = renderMarkdownRaw plainStyle 80 "| a | b |\n|---|---|\n| 1 | 2 |"
+    in counterexample (show got)
+         (got == ["| a | b |", "|---|---|", "| 1 | 2 |"])
+
+-- | Alignment pads on the correct side.
+prop_tableAlign :: Property
+prop_tableAlign =
+    let src = "| l | c | r |\n|:--|:-:|--:|\n| 1 | 2 | 3 |"
+        got = renderMarkdownRaw plainStyle 80 src
+    in counterexample (show got) (length got == 3 && head got == "| l | c | r |")
+
+-- | Column width is measured in cells, so a CJK header lines up with its
+-- ASCII body.
+prop_tableCjkWidth :: Property
+prop_tableCjkWidth =
+    let src = "| 中 | b |\n|---|---|\n| 1 | 2 |"
+        got = renderMarkdownRaw plainStyle 80 src
+    in counterexample (show got)
+         (length got == 3 && (got !! 2) == "| 1  | 2 |")
+
 main :: IO Bool
 main = and <$> sequenceA
     [ isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_emptyInput
@@ -131,4 +156,7 @@ main = and <$> sequenceA
     , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_codeSpan
     , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_link
     , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_mixedInline
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_table2x2
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_tableAlign
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_tableCjkWidth
     ]
