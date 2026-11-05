@@ -78,6 +78,38 @@ prop_thematicBreak :: Bool
 prop_thematicBreak =
     renderMarkdownRaw plainStyle 80 "---" == [T.replicate 80 "-"]
 
+-- ---------------------------------------------------------------- T2 行内
+
+-- | Strong text keeps its markers under plainStyle.
+prop_strong :: Property
+prop_strong =
+    let got = renderMarkdownRaw plainStyle 80 "**b**"
+    in counterexample (show got) (got == ["**b**"])
+
+-- | Emphasis keeps its markers.
+prop_emphasis :: Property
+prop_emphasis =
+    let got = renderMarkdownRaw plainStyle 80 "*i*"
+    in counterexample (show got) (got == ["*i*"])
+
+-- | An inline code span keeps its backticks.
+prop_codeSpan :: Property
+prop_codeSpan =
+    let got = renderMarkdownRaw plainStyle 80 "`c`"
+    in counterexample (show got) (got == ["`c`"])
+
+-- | A link renders its text and target.
+prop_link :: Property
+prop_link =
+    let got = renderMarkdownRaw plainStyle 80 "[t](u)"
+    in counterexample (show got) (got == ["t (u)"])
+
+-- | Mixed inline markup composes.
+prop_mixedInline :: Property
+prop_mixedInline =
+    let got = renderMarkdownRaw plainStyle 80 "**a** *b* `c`"
+    in counterexample (show got) (got == ["**a** *b* `c`"])
+
 main :: IO Bool
 main = and <$> sequenceA
     [ isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_emptyInput
@@ -94,4 +126,9 @@ main = and <$> sequenceA
     , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_fencedCodeLang
     , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_blockquote
     , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_thematicBreak
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_strong
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_emphasis
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_codeSpan
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_link
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_mixedInline
     ]
