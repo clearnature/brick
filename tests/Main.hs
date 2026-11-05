@@ -16,6 +16,8 @@ import qualified List
 import qualified Render
 import qualified DialogStack
 import qualified Escape
+import qualified GlyphFit
+import qualified Markdown
 import qualified FilterList
 import qualified TextWidth
 
@@ -120,5 +122,5 @@ return []
 
 main :: IO ()
 main =
-  (and <$> sequenceA [DialogStack.main, Escape.main, FilterList.main, TextWidth.main])
+  (and <$> sequenceA [DialogStack.main, Escape.main, FilterList.main, TextWidth.main, GlyphFit.main, Markdown.main])
   >>= bool exitFailure exitSuccess
