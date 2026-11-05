@@ -30,6 +30,54 @@ prop_neverCrashes :: String -> Bool
 prop_neverCrashes s =
     length (renderMarkdownRaw plainStyle 80 (T.pack s)) >= 0
 
+-- ---------------------------------------------------------------- T1 块级
+
+-- | A level-1 heading renders its level and text.
+prop_h1 :: Bool
+prop_h1 = renderMarkdownRaw plainStyle 80 "# Title" == ["# Title"]
+
+-- | A level-3 heading keeps its level.
+prop_h3 :: Bool
+prop_h3 = renderMarkdownRaw plainStyle 80 "### Sub" == ["### Sub"]
+
+-- | Bullet list: one row per item, marker preserved.
+prop_unorderedList :: Bool
+prop_unorderedList =
+    renderMarkdownRaw plainStyle 80 "- a\n- b" == ["- a", "- b"]
+
+-- | Ordered list keeps the numbers.
+prop_orderedList :: Bool
+prop_orderedList =
+    renderMarkdownRaw plainStyle 80 "1. a\n2. b" == ["1. a", "2. b"]
+
+-- | A nested list indents the inner items.
+prop_nestedList :: Property
+prop_nestedList =
+    let got = renderMarkdownRaw plainStyle 80 "- a\n  - b"
+    in counterexample (show got) (got == ["- a", "  - b"])
+
+-- | A fenced code block yields its content rows, verbatim.
+prop_fencedCode :: Property
+prop_fencedCode =
+    let got = renderMarkdownRaw plainStyle 80 "```\nx\ny\n```"
+    in counterexample (show got) (got == ["x", "y"])
+
+-- | The language tag is not part of the content.
+prop_fencedCodeLang :: Bool
+prop_fencedCodeLang =
+    renderMarkdownRaw plainStyle 80 "```hs\nx\n```" == ["x"]
+
+-- | A blockquote is prefixed with the quote bar.
+prop_blockquote :: Property
+prop_blockquote =
+    let got = renderMarkdownRaw plainStyle 80 "> q"
+    in counterexample (show got) (got == ["\x2502 q"])
+
+-- | A thematic break spans the available width.
+prop_thematicBreak :: Bool
+prop_thematicBreak =
+    renderMarkdownRaw plainStyle 80 "---" == [T.replicate 80 "-"]
+
 main :: IO Bool
 main = and <$> sequenceA
     [ isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_emptyInput
@@ -37,4 +85,13 @@ main = and <$> sequenceA
     , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_twoParagraphs
     , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_softBreakJoins
     , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_neverCrashes
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_h1
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_h3
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_unorderedList
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_orderedList
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_nestedList
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_fencedCode
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_fencedCodeLang
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_blockquote
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_thematicBreak
     ]

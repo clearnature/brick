@@ -63,8 +63,8 @@ plainStyle = MdStyle
   , msEm       = \t -> "*" <> t <> "*"
   , msCode     = \t -> "`" <> t <> "`"
   , msLink     = \t u -> t <> " (" <> u <> ")"
-  , msBullet   = \lvl n ->
-      T.replicate (lvl * 2) " " <> if n == 0 then "-" else T.pack (show n) <> "."
+  , msBullet   = \_lvl n -> if n == 0 then "-" else T.pack (show n) <> "."
+    -- 缩进由 msIndent 单独负责；这里再带一次会让嵌套列表多缩一层
   , msQuoteBar = "│ "
   , msRule     = \w -> T.replicate w "-"
   , msIndent   = \lvl -> T.replicate (lvl * 2) " "
@@ -105,8 +105,12 @@ data MdRow
   | RowParagraph MdInlines
   | RowCodeBlock Text
   | RowQuote [MdRow]
-  | RowBullet Int Int MdInlines
-    -- ^ Nesting level, item number (0 = unordered), content.
+  | RowBullet Int Int [MdRow]
+    -- ^ Nesting level, item number (0 = unordered), and the item's blocks
+    -- (a paragraph, possibly followed by a nested list).
+  | RowList [MdRow]
+    -- ^ A whole list: its items are rows, but they are tight — no blank row
+    -- belongs between them the way it does between blocks.
   | RowRule
   deriving (Show)
 
@@ -157,22 +161,16 @@ instance IsBlock MdInlines MdDoc where
   heading lvl ils = MdDoc [RowHeading lvl ils]
   rawBlock _ t = MdDoc [RowCodeBlock t]
   referenceLinkDefinition _ _ = mempty
-  list (BulletList _) _ items = MdDoc (zipWith (bullet 0) (repeat 0) items)
+  list (BulletList _) _ items =
+    MdDoc [RowList (zipWith (bullet 0) (repeat 0) items)]
   list (OrderedList start _ _) _ items =
-    MdDoc (zipWith (bullet 0) [start ..] items)
+    MdDoc [RowList (zipWith (bullet 0) [start ..] items)]
 
 -- | Turn a parsed list item into a bulleted row.  An item holding a single
 -- paragraph keeps its inlines (so styling survives); anything more complex
 -- is flattened, which is what a one-row terminal list can show anyway.
 bullet :: Int -> Int -> MdDoc -> MdRow
-bullet lvl n (MdDoc rows) = case rows of
-  [RowParagraph ils] -> RowBullet lvl n ils
-  other              -> RowBullet lvl n
-    (MdInlines [InlText (T.intercalate " " (map rowText other))])
-
-rowText :: MdRow -> Text
-rowText (RowParagraph ils) = concatInlines (unInlines ils)
-rowText _                  = ""
+bullet lvl n (MdDoc rows) = RowBullet lvl n rows
 
 -- ------------------------------------------------------------- rendering
 
@@ -223,11 +221,16 @@ renderRow st width lvl = \case
   RowParagraph ils  -> [renderInlines st ils]
   RowCodeBlock t    -> T.lines t
   RowRule           -> [msRule st width]
-  RowBullet n k ils ->
+  RowBullet n k rows ->
     let indent = msIndent st (lvl + n)
         marker = msBullet st (lvl + n) k
-        body   = renderInlines st ils
-    in [indent <> marker <> " " <> body]
+    in case rows of
+         (RowParagraph ils : rest) ->
+           (indent <> marker <> " " <> renderInlines st ils)
+             : renderRows st width (lvl + n + 1) rest
+         rest -> (indent <> marker)
+                   : renderRows st width (lvl + n + 1) rest
+  RowList rows      -> concatMap (renderRow st width lvl) rows
   RowQuote rows     ->
     let bar r = msQuoteBar st <> r
     in map bar (renderRows st width (lvl + 1) rows)
