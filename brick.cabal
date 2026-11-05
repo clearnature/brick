@@ -95,6 +95,7 @@ library
     Brick.Widgets.Edit
     Brick.Widgets.FilterList
     Brick.Widgets.FileBrowser
+    Brick.Widgets.GlyphFit
     Brick.Widgets.List
     Brick.Widgets.Menu
     Brick.Widgets.MenuBar
@@ -603,7 +604,7 @@ test-suite brick-tests
   ghc-options:         -Wall -Wcompat -Wno-orphans -O2
   default-language:    Haskell2010
   main-is:             Main.hs
-  other-modules:       List Render DialogStack Escape FilterList TextWidth
+  other-modules:       List Render DialogStack Escape FilterList TextWidth GlyphFit
   build-depends:       base <=5,
                        brick,
                        text,
