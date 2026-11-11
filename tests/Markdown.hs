@@ -135,6 +135,41 @@ prop_tableCjkWidth =
     in counterexample (show got)
          (length got == 3 && (got !! 2) == "| 1  | 2 |")
 
+-- ------------------------------------------------------- T4 CJK 与折行
+
+-- | Emphasis wrapped in CJK characters must still be emphasis. The default
+-- style renders strong as **…**, which is exactly the input text, so it
+-- cannot tell "parsed" from "passed through"; a bracket style can.
+prop_cjkStrong :: Property
+prop_cjkStrong =
+    let st = plainStyle { msStrong = \t -> "[" <> t <> "]" }
+        got = renderMarkdownRaw st 80 "这是**粗体**文字"
+    in counterexample (show got) (got == ["这是[粗体]文字"])
+
+-- | Long paragraphs wrap at the given width.
+prop_wrapWithinWidth :: Property
+prop_wrapWithinWidth =
+    let para = T.replicate 200 "中"
+        got = renderMarkdownRaw plainStyle 80 para
+    in counterexample (show (map T.length got))
+         (not (null got) && all (\r -> T.length r <= 80) got)
+
+-- | Wrapping never splits a grapheme cluster (a ZWJ emoji stays whole).
+prop_wrapKeepsClusters :: Property
+prop_wrapKeepsClusters =
+    let family = "\x1F468\x200D\x1F469\x200D\x1F467"
+        para = T.concat (replicate 40 family)
+        got = T.concat (renderMarkdownRaw plainStyle 80 para)
+    in counterexample (show (T.length got))
+         (T.count "\x200D" got == 80)
+
+-- | The plain-text path carries no markup characters.
+prop_plainHasNoMarkup :: Property
+prop_plainHasNoMarkup =
+    let out = renderMarkdownPlain 80 "# H\n\n**b** and `c`"
+    in counterexample (show out)
+         (not (T.isInfixOf "**" out) && not (T.isInfixOf "`" out))
+
 main :: IO Bool
 main = and <$> sequenceA
     [ isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_emptyInput
@@ -159,4 +194,8 @@ main = and <$> sequenceA
     , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_table2x2
     , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_tableAlign
     , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_tableCjkWidth
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_cjkStrong
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 1 } prop_wrapWithinWidth
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 1 } prop_wrapKeepsClusters
+    , isSuccess <$> quickCheckWithResult stdArgs { maxSuccess = 100 } prop_plainHasNoMarkup
     ]

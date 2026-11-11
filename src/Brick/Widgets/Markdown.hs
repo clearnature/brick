@@ -32,7 +32,7 @@ module Brick.Widgets.Markdown
 
 import Brick (Widget)
 import Brick.Widgets.Core (txt, vBox)
-import Brick.Widgets.TextWidth (textCells)
+import Brick.Widgets.TextWidth (takeCells, textCells)
 import Commonmark
 import Commonmark (SyntaxSpec, defaultSyntaxSpec)
 import Data.Functor.Identity (Identity, runIdentity)
@@ -72,6 +72,16 @@ plainStyle = MdStyle
   , msQuoteBar = "│ "
   , msRule     = \w -> T.replicate w "-"
   , msIndent   = \lvl -> T.replicate (lvl * 2) " "
+  }
+
+-- | A style that emits no markup at all: what 「copy this message」 should
+-- produce.  Links keep their target in parentheses so no information is lost.
+plainTextStyle :: MdStyle
+plainTextStyle = plainStyle
+  { msHeading = \_ t -> t
+  , msStrong  = id
+  , msEm      = id
+  , msCode    = id
   }
 
 -- ------------------------------------------------------- intermediate form
@@ -209,7 +219,8 @@ renderInline st = go
     go InlBreak      = "\n"
 
 renderInlines :: MdStyle -> MdInlines -> Text
-renderInlines st (MdInlines is) = T.concat (map (renderInline st) is)
+renderInlines st (MdInlines is) =
+  T.replace "\x200B" "" (T.concat (map (renderInline st) is))
 
 -- | Parse and render to rows of plain text.
 --
@@ -223,9 +234,9 @@ renderMarkdownRaw st width input =
          (commonmarkWith
             ((defaultSyntaxSpec <> pipeTableSpec)
                :: SyntaxSpec Identity MdInlines MdDoc)
-            "" input) of
+            "" (fixCjkEmphasis input)) of
     Left _     -> []
-    Right doc  -> renderRows st width 0 (unMdDoc doc)
+    Right doc  -> concatMap (wrapText width) (renderRows st width 0 (unMdDoc doc))
 
 renderRows :: MdStyle -> Int -> Int -> [MdRow] -> [Text]
 renderRows st width lvl rows =
@@ -289,4 +300,46 @@ renderMarkdown st width input =
 -- | Render to plain text (the "copy this message" path).
 renderMarkdownPlain :: Int -> Text -> Text
 renderMarkdownPlain width input =
-  T.intercalate "\n" (renderMarkdownRaw plainStyle width input)
+  T.intercalate "\n" (renderMarkdownRaw plainTextStyle width input)
+
+-- | CommonMark requires the closing @**@ of emphasis not to be followed by a
+-- letter or digit, and CJK characters count as letters.  So @这是**粗体**文字@
+-- is /not/ emphasis under a conforming parser, which is not what a Chinese
+-- writer means by it.
+--
+-- The fix is a zero-width space on each side of the delimiters: that
+-- satisfies the "not adjacent to alphanumeric" rule without changing what the
+-- reader sees.  The zero-width spaces are stripped again at render time.
+fixCjkEmphasis :: Text -> Text
+fixCjkEmphasis = insertBreaks
+  where
+    insertBreaks t = T.concat (go (T.unpack t))
+    go [] = []
+    go ('*' : '*' : rest)
+      | Just (body, after) <- takeUntilClose rest =
+          ["\x200B**"] <> map T.singleton body <> ["**\x200B"] <> go after
+    go (c : cs) = T.singleton c : go cs
+    takeUntilClose xs =
+      let (body, rest) = breakOnClose xs
+      in if null body then Nothing else Just (body, rest)
+    breakOnClose [] = ([], [])
+    breakOnClose ('*' : '*' : rest) = ([], rest)
+    breakOnClose (c : cs) = let (b, r) = breakOnClose cs in (c : b, r)
+
+-- | Greedy wrap at the given cell width, breaking on spaces where possible
+-- and never inside a grapheme cluster.
+wrapText :: Int -> Text -> [Text]
+wrapText width t
+  | width <= 0 = [t]
+  | otherwise = go t
+  where
+    go s
+      | T.null s = []
+      | textCells s <= width = [s]
+      | otherwise =
+          let fits = takeCells width s
+              dropped = T.drop (T.length fits) s
+          in case T.breakOnEnd " " fits of
+               (line, "") -> fits : go dropped
+               (line, _)  ->
+                 T.stripEnd line : go (T.stripStart (T.drop (T.length line) s))
