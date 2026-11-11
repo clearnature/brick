@@ -227,7 +227,6 @@ executable brick-form-demo
                        text,
                        microlens,
                        microlens-th,
-                       vty-crossplatform,
                        vty
 
 executable brick-text-wrap-demo
@@ -280,7 +279,6 @@ executable brick-viewport-scrollbars-demo
   build-depends:       base,
                        brick,
                        vty,
-                       vty-crossplatform,
                        microlens-mtl,
                        microlens-th
 
@@ -319,8 +317,7 @@ executable brick-mouse-demo
                        vty,
                        microlens >= 0.3.0.0,
                        microlens-th,
-                       microlens-mtl,
-                       mtl
+                       microlens-mtl
 
 executable brick-layer-demo
   if !flag(demos)
@@ -449,7 +446,6 @@ executable brick-animation-demo
   build-depends:       base,
                        brick,
                        vty,
-                       vty-crossplatform,
                        containers,
                        microlens-platform
 
@@ -564,7 +560,6 @@ executable brick-menu-demo
   build-depends:       base,
                        brick,
                        vty,
-                       mtl,
                        text,
                        microlens,
                        microlens-mtl,
@@ -581,7 +576,6 @@ executable brick-menu-keybindings-demo
   build-depends:       base,
                        brick,
                        vty,
-                       mtl,
                        text,
                        microlens,
                        microlens-mtl,
@@ -598,7 +592,6 @@ executable brick-menu-bar-demo
   build-depends:       base,
                        brick,
                        vty,
-                       mtl,
                        text,
                        microlens,
                        microlens-mtl,

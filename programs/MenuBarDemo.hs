@@ -7,7 +7,6 @@ import Lens.Micro ((^.))
 import Lens.Micro.TH (makeLenses)
 import Lens.Micro.Mtl ((%=), use)
 import Control.Monad (void, when)
-import Control.Monad.Trans (liftIO)
 #if !(MIN_VERSION_base(4,11,0))
 import Data.Monoid ((<>))
 #endif
@@ -27,6 +26,7 @@ import Brick.Widgets.MenuBar
 data Name = FileMenu MenuRegion
           | EditMenu MenuRegion
           | HelpMenu MenuRegion
+          | FormatMenu MenuRegion
           deriving (Show, Ord, Eq)
 
 data St =
@@ -69,11 +69,11 @@ handleNonMenuBarEvent (T.VtyEvent (V.EvKey V.KEsc [])) =
     -- Esc quits the application
     M.halt
 handleNonMenuBarEvent (T.VtyEvent (V.EvKey (V.KChar 'f') [V.MMeta])) =
-    menuBar %= toggleMenuAtIndex 0
+    menuBar %= toggleNamedMenu FileMenu
 handleNonMenuBarEvent (T.VtyEvent (V.EvKey (V.KChar 'e') [V.MMeta])) =
-    menuBar %= toggleMenuAtIndex 1
+    menuBar %= toggleNamedMenu EditMenu
 handleNonMenuBarEvent (T.VtyEvent (V.EvKey (V.KChar 'h') [V.MMeta])) =
-    menuBar %= toggleMenuAtIndex 2
+    menuBar %= toggleNamedMenu HelpMenu
 handleNonMenuBarEvent (T.VtyEvent (V.EvKey (V.KChar 'o') [])) = do
     menuBarOrientation %= nextOrientation
     o <- use menuBarOrientation
@@ -99,9 +99,7 @@ aMap = attrMap V.defAttr
 app :: M.App St e Name
 app =
     M.App { M.appDraw = drawUi
-          , M.appStartEvent = do
-              vty <- M.getVtyHandle
-              liftIO $ V.setMode (V.outputIface vty) V.Mouse True
+          , M.appStartEvent = M.enableMouseEvents
           , M.appHandleEvent = appEvent
           , M.appAttrMap = const aMap
           , M.appChooseCursor = M.showFirstCursor
@@ -124,9 +122,21 @@ newEditMenu =
         [ menuEntry "Undo" (return ())
         , menuEntry "Redo" (return ())
         , menuSeparator
+        , submenu newFormatMenu
+        , menuSeparator
         , menuEntry "Cut" (return ())
         , menuEntry "Copy" (return ())
         , menuEntry "Paste" (return ())
+        ]
+
+newFormatMenu :: SimpleMenu St Name
+newFormatMenu =
+    simpleMenu "Format" FormatMenu
+        [ menuEntry "Bold" (return ())
+        , menuEntry "Strikethrough" (return ())
+        , menuEntry "Underline" (return ())
+        , menuSeparator
+        , menuEntry "Clear formatting" (return ())
         ]
 
 newHelpMenu :: SimpleMenu St Name

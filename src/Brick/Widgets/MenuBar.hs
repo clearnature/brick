@@ -68,11 +68,14 @@ module Brick.Widgets.MenuBar
   , closeAllMenus
   , openMenuAtIndex
   , toggleMenuAtIndex
+  , toggleNamedMenu
+  , openNamedMenu
   , setMenuBarOrientation
   )
 where
 
 import Control.Monad (when)
+import qualified Data.Set as S
 import Data.Maybe (isJust, listToMaybe, fromMaybe)
 import Lens.Micro.Platform ((^.), (&), (%~), (.~), Lens', ix, each)
 import Lens.Micro.Mtl
@@ -105,10 +108,17 @@ type SimpleMenuBar s n = MenuBar s n (EventM n s ())
 type DispatchingMenuBar s n k = MenuBar s n (EventM n s (EntryTrigger s n k))
 
 -- | Create a new menu bar from the specified menu list. If the list is
--- empty, this calls 'error'.
-newMenuBar :: [Menu s n k] -> MenuBar s n k
+-- empty, this calls 'error'. If the list contains menus with the same
+-- resource name constructor, this calls 'error'.
+newMenuBar :: (Ord n) => [Menu s n k] -> MenuBar s n k
 newMenuBar [] = error "BUG: newMenuBar requires a non-empty list"
-newMenuBar ms = MenuBar LeftToRight $ V.fromList ms
+newMenuBar ms = MenuBar LeftToRight $ V.fromList uniqueMenus
+    where
+        uniqueMenus = if S.size menuNames == length ms
+                      then ms
+                      else error "newMenuBar: all menus must use unique resource name constructors"
+        menuNames = S.fromList $
+                    menuTitleName <$> ms
 
 -- | Return whether this menu bar has an open menu.
 hasOpenMenu :: MenuBar s n k -> Bool
@@ -252,6 +262,20 @@ closeAllMenus mb = mb & menuBarMenusL.each %~ closeMenu
 openMenuAtIndex :: Int -> MenuBar s n k -> MenuBar s n k
 openMenuAtIndex i mb = (closeAllMenus mb) & menuBarMenusL.ix i %~ openMenu
 
+-- | Open the menu with the specified resource name constructor, closing
+-- any other open menus in the menu bar. If the index is invalid, this
+-- does nothing.
+openNamedMenu :: (Eq n) => (MenuRegion -> n) -> MenuBar s n k -> MenuBar s n k
+openNamedMenu f mb =
+    case findNamedMenu f mb of
+        Just (i, _) -> (closeAllMenus mb) & menuBarMenusL.ix i %~ openMenu
+        Nothing -> mb
+
+findNamedMenu :: (Eq n) => (MenuRegion -> n) -> MenuBar s n k -> Maybe (Int, Menu s n k)
+findNamedMenu f mb =
+    V.find ((== (f MenuTitle)) . menuTitleName . snd) $
+    V.zip (V.fromList [0..]) $ menuBarMenus mb
+
 -- | Set the menu orientation of the menu bar and all of its menus. For
 -- details, see 'setMenuOrientation'.
 setMenuBarOrientation :: MenuOrientation -> MenuBar s n k -> MenuBar s n k
@@ -268,6 +292,17 @@ toggleMenuAtIndex i mb =
         Just (idx, _) -> if idx == i
                          then closeAllMenus mb
                          else openMenuAtIndex i mb
+
+-- | Toggle the open state of the menu with the specified resource name
+-- constructor. If toggling to open, this will close any other open
+-- menus in the menu bar. If the index is invalid, this does nothing.
+toggleNamedMenu :: (Eq n) => (MenuRegion -> n) -> MenuBar s n k -> MenuBar s n k
+toggleNamedMenu f mb =
+    case getOpenMenu mb of
+        Nothing -> openNamedMenu f mb
+        Just (_, m) -> if menuTitleName m == f MenuTitle
+                       then closeAllMenus mb
+                       else openNamedMenu f mb
 
 -- | Given a lens to access a menu bar and a handler to invoke on its
 -- currently open menu, invoke the handler if there is an open menu and
