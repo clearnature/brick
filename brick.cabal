@@ -96,7 +96,6 @@ library
     Brick.Widgets.FileBrowser
     Brick.Widgets.GlyphFit
     Brick.Widgets.List
-    Brick.Widgets.Markdown
     Brick.Widgets.Menu
     Brick.Widgets.MenuBar
     Brick.Widgets.ProgressBar
@@ -137,13 +136,7 @@ library
                        word-wrap >= 0.2,
                        unordered-containers,
                        hashable,
-                       time,
-                       -- Markdown 渲染（Brick.Widgets.Markdown）的解析层。
-                       -- 至少 0.3.2：该版本保证输入末尾总有 LineEnd token
-                       -- （上游 #179），否则末尾的标题、围栏代码块、表格
-                       -- 会被错误解析。
-                       commonmark >= 0.3.2,
-                       commonmark-extensions
+                       time
 
 executable brick-custom-keybinding-demo
   if !flag(demos)
@@ -603,7 +596,7 @@ test-suite brick-tests
   ghc-options:         -Wall -Wcompat -Wno-orphans -O2
   default-language:    Haskell2010
   main-is:             Main.hs
-  other-modules:       List Render DialogStack Escape FilterList TextWidth GlyphFit Markdown
+  other-modules:       List Render DialogStack Escape FilterList TextWidth GlyphFit
   build-depends:       base <=5,
                        brick,
                        text,
