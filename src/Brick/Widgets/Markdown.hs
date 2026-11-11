@@ -32,7 +32,7 @@ module Brick.Widgets.Markdown
 
 import Brick (Widget)
 import Brick.Widgets.Core (txt, vBox)
-import Brick.Widgets.TextWidth (takeCells, textCells)
+import Brick.Widgets.TextWidth (graphemes, takeCells, textCells)
 import Commonmark
 import Data.Functor.Identity (Identity, runIdentity)
 import Commonmark.Extensions (ColAlignment(..), HasPipeTable(..), pipeTableSpec)
@@ -328,6 +328,9 @@ fixCjkEmphasis = insertBreaks
 -- and never inside a grapheme cluster.
 wrapText :: Int -> Text -> [Text]
 wrapText width t
+  -- An empty row is a paragraph break, not "nothing to wrap": dropping it
+  -- would silently glue two paragraphs together.
+  | T.null t = [t]
   | width <= 0 = [t]
   | otherwise = go t
   where
@@ -335,9 +338,19 @@ wrapText width t
       | T.null s = []
       | textCells s <= width = [s]
       | otherwise =
-          let fits = takeCells width s
-              dropped = T.drop (T.length fits) s
-          in case T.breakOnEnd " " fits of
+          let raw = takeCells width s
+              -- A cluster wider than the whole budget must still consume
+              -- input: advancing zero characters would recurse forever.
+              (fits, dropped)
+                | T.null raw =
+                    let g = T.concat (take 1 (graphemes s))
+                    in (g, T.drop (T.length g) s)
+                | otherwise = (raw, T.drop (T.length raw) s)
+          in case T.breakOn " " fits of
+               -- No break opportunity in the fitted prefix: hard break.
                (_, "") -> fits : go dropped
-               (line, _)  ->
-                 T.stripEnd line : go (T.stripStart (T.drop (T.length line) s))
+               (line, _)
+                 | T.null line -> go (T.stripStart s)
+                 | otherwise   ->
+                     T.stripEnd line
+                       : go (T.stripStart (T.drop (T.length line) s))
