@@ -34,7 +34,6 @@ import Brick (Widget)
 import Brick.Widgets.Core (txt, vBox)
 import Brick.Widgets.TextWidth (takeCells, textCells)
 import Commonmark
-import Commonmark (SyntaxSpec, defaultSyntaxSpec)
 import Data.Functor.Identity (Identity, runIdentity)
 import Commonmark.Extensions (ColAlignment(..), HasPipeTable(..), pipeTableSpec)
 import Data.List (intercalate)
@@ -268,9 +267,9 @@ renderRow st width lvl = \case
 -- lines up), pad each cell to its column width honouring the alignment, and
 -- put a rule under the header.
 renderTable :: MdStyle -> [ColAlignment] -> [[MdInlines]] -> [Text]
-renderTable st aligns rows
-  | null cells = []
-  | otherwise  = line header : rule : map line body
+renderTable st aligns rows = case cells of
+  []              -> []
+  (header : body) -> line header : rule : map line body
   where
     cells = map (map (renderInlines st)) rows
     ncols = maximum (0 : map length cells)
@@ -289,7 +288,6 @@ renderTable st aligns rows
            _                -> t <> T.replicate gap " "
     line r = "| " <> T.intercalate " | "
       [ pad (widths !! i) (alignAt i) (cellAt i r) | i <- [0 .. ncols - 1] ] <> " |"
-    (header : body) = cells
     rule = "|" <> T.intercalate "|" [ T.replicate (w + 2) "-" | w <- widths ] <> "|"
 
 -- | Render to a widget.
@@ -340,6 +338,6 @@ wrapText width t
           let fits = takeCells width s
               dropped = T.drop (T.length fits) s
           in case T.breakOnEnd " " fits of
-               (line, "") -> fits : go dropped
+               (_, "") -> fits : go dropped
                (line, _)  ->
                  T.stripEnd line : go (T.stripStart (T.drop (T.length line) s))
