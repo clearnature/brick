@@ -154,8 +154,6 @@ executable brick-custom-keybinding-demo
   build-depends:       base,
                        brick,
                        text,
-                       commonmark >= 0.2,
-                       commonmark-extensions,
                        vty,
                        containers,
                        microlens,
