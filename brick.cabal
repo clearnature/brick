@@ -139,8 +139,11 @@ library
                        unordered-containers,
                        hashable,
                        time,
-                       -- Markdown 渲染（Brick.Widgets.Markdown）的解析层
-                       commonmark >= 0.2,
+                       -- Markdown 渲染（Brick.Widgets.Markdown）的解析层。
+                       -- 至少 0.3.2：该版本保证输入末尾总有 LineEnd token
+                       -- （上游 #179），否则末尾的标题、围栏代码块、表格
+                       -- 会被错误解析。
+                       commonmark >= 0.3.2,
                        commonmark-extensions
 
 executable brick-custom-keybinding-demo
