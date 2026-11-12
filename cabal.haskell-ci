@@ -1,9 +1,0 @@
-raw-project
-  package brick
-     flags: +demos
-
--- GHC 8.10.7 is unavailable from https://launchpad.net/~hvr/+archive/ubuntu/ghc.
--- Therefore we install it via GHCup.
-ghcup-jobs: >= 8.10
-
-branches: main
